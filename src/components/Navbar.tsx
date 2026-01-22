@@ -54,7 +54,7 @@ export function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-[37px] left-0 right-0 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-sky-100 dark:border-slate-800 z-50 px-4 md:px-8 flex items-center justify-between transition-colors duration-300">
+      <nav className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-sky-100 dark:border-slate-800 z-50 px-4 md:px-8 flex items-center justify-between transition-colors duration-300">
         <Link href="/" className="flex items-center gap-2 group">
           <Image src="/images/cherry-logo.svg" alt="Logo" width={40} height={40} className="h-10 w-auto transition-transform" />
         </Link>

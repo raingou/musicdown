@@ -45,13 +45,28 @@ export function PlayerBar({
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
-      className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 px-4 py-3 z-50 shadow-2xl shadow-slate-200/50 dark:shadow-none"
+      className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 px-4 py-3 z-50 shadow-2xl shadow-slate-200/50 dark:shadow-none pb-safe"
     >
+      {/* Mobile Progress Bar */}
+      <div 
+        className="absolute top-0 left-0 right-0 h-1 bg-slate-200 dark:bg-slate-800 md:hidden cursor-pointer"
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const percent = (e.clientX - rect.left) / rect.width;
+          onSeek(percent * duration);
+        }}
+      >
+        <div 
+          className="h-full bg-sky-500"
+          style={{ width: `${(currentTime / duration) * 100}%` }}
+        />
+      </div>
+
       <div className="container mx-auto max-w-5xl flex items-center justify-between gap-4">
         {/* Track Info */}
-        <div className="flex items-center gap-4 w-1/4 min-w-[200px]">
+        <div className="flex items-center gap-3 md:gap-4 flex-1 md:w-1/4 md:min-w-[200px] min-w-0">
           <div className={cn(
-            "w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden relative flex-shrink-0",
+            "w-10 h-10 md:w-12 md:h-12 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden relative flex-shrink-0",
             isPlaying && "animate-spin-slow"
           )} style={{ animationDuration: '8s' }}>
             {currentMusic.cover ? (
@@ -69,14 +84,31 @@ export function PlayerBar({
               </div>
             )}
           </div>
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex flex-col overflow-hidden min-w-0">
             <h3 className="font-semibold text-slate-800 dark:text-slate-100 truncate text-sm">{currentMusic.title}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{currentMusic.artist}</p>
           </div>
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-col items-center flex-1 max-w-lg">
+        {/* Mobile Play Button */}
+        <div className="md:hidden flex items-center gap-4">
+          <button 
+            onClick={onPlayPause}
+            className="w-9 h-9 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-md active:scale-95 transition-transform"
+          >
+            {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+          </button>
+          <button 
+            onClick={onNext}
+            disabled={!onNext}
+            className="text-slate-400 dark:text-slate-500 active:text-sky-500"
+          >
+             <SkipForward className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Desktop Controls */}
+        <div className="hidden md:flex flex-col items-center flex-1 max-w-lg">
           <div className="flex items-center gap-6 mb-1">
             <button 
               onClick={onPrev}
@@ -126,8 +158,8 @@ export function PlayerBar({
           </div>
         </div>
 
-        {/* Volume & Extras */}
-        <div className="w-1/4 flex justify-end items-center gap-4 min-w-[150px]">
+        {/* Volume & Extras (Desktop Only) */}
+        <div className="hidden md:flex w-1/4 justify-end items-center gap-4 min-w-[150px]">
           <div className="flex items-center gap-2 group w-32">
             <button 
               onClick={() => onVolumeChange(volume === 0 ? 1 : 0)}

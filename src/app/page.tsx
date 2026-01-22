@@ -234,7 +234,7 @@ export default function Home() {
           </p>
           
           {/* Provider Selector */}
-          <div className="flex justify-center mb-6 gap-3">
+          <div className="flex justify-center mb-6 gap-3 flex-wrap">
             {[
               { id: 'gequbao', name: '歌曲宝' },
               { id: 'gequhai', name: '歌曲海' },
@@ -375,7 +375,7 @@ export default function Home() {
                 className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden mb-24"
               >
                 {/* List Header */}
-                <div className="grid grid-cols-[50px_1fr_1fr_100px] md:grid-cols-[50px_2fr_1.5fr_120px] gap-4 p-4 border-b border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-sm font-medium text-slate-500 dark:text-slate-400">
+                <div className="grid grid-cols-[40px_1fr_40px] md:grid-cols-[50px_2fr_1.5fr_120px] gap-4 p-4 border-b border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-sm font-medium text-slate-500 dark:text-slate-400">
                   <div className="flex justify-center items-center">
                     <button 
                       onClick={toggleAll}
@@ -390,8 +390,8 @@ export default function Home() {
                     </button>
                   </div>
                   <div>歌曲</div>
-                  <div>歌手</div>
-                  <div className="text-right pr-4">操作</div>
+                  <div className="hidden md:block">歌手</div>
+                  <div className="text-right pr-4 md:pr-4">操作</div>
                 </div>
 
                 {/* List Items */}
@@ -407,7 +407,7 @@ export default function Home() {
                         animate={{ opacity: 1 }}
                         onDoubleClick={() => handlePlay(item)}
                         className={cn(
-                          "grid grid-cols-[50px_1fr_1fr_100px] md:grid-cols-[50px_2fr_1.5fr_120px] gap-4 p-4 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200 group cursor-pointer select-none active:scale-[0.99] rounded-xl",
+                          "grid grid-cols-[40px_1fr_40px] md:grid-cols-[50px_2fr_1.5fr_120px] gap-4 p-4 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200 group cursor-pointer select-none active:scale-[0.99] rounded-xl",
                           isActive && "bg-sky-50/50 dark:bg-sky-900/20"
                         )}
                       >
@@ -455,19 +455,24 @@ export default function Home() {
                               )}
                             </div>
                           </div>
-                          <span className={cn(
-                            "font-medium truncate",
-                            isActive ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
-                          )}>
-                            {item.title}
-                          </span>
+                          <div className="flex flex-col min-w-0 overflow-hidden">
+                            <span className={cn(
+                              "font-medium truncate",
+                              isActive ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
+                            )}>
+                              {item.title}
+                            </span>
+                            <span className="text-xs text-slate-400 dark:text-slate-500 truncate md:hidden block mt-0.5">
+                              {item.artist}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="text-slate-500 dark:text-slate-400 truncate text-sm">
+                        <div className="text-slate-500 dark:text-slate-400 truncate text-sm hidden md:block">
                           {item.artist}
                         </div>
 
-                        <div className="flex justify-end pr-2">
+                        <div className="flex justify-end pr-2 md:pr-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); downloadOne(item); }}
                             className="p-2 text-slate-400 dark:text-slate-500 hover:text-sky-500 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
