@@ -2,11 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { Search, Loader2, Play, Pause, Download, Check, Music, Trash2, Flame, Zap, ShieldCheck, Headphones } from "lucide-react";
+import { Search, Loader2, Play, Pause, Download, Check, Music, Trash2, Flame, Zap, ShieldCheck, Headphones, ListMusic } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MusicItem } from "@/types/music";
 import { PlayerBar } from "@/components/PlayerBar";
+import { DownloadDrawer } from "@/components/DownloadDrawer";
+import { DownloadTask } from "@/types/download";
+import axios from "axios";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -25,6 +28,10 @@ export default function Home() {
   const [searched, setSearched] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [downloadingCount, setDownloadingCount] = useState(0);
+  
+  // Download Manager State
+  const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Initialize Audio
   useEffect(() => {
@@ -131,29 +138,72 @@ export default function Home() {
     }
   };
 
-  const downloadOne = async (item: MusicItem) => {
+  const executeDownload = async (task: DownloadTask) => {
     try {
-      // 双重保险：再次清理文件名中的多余空白
-      const cleanTitle = item.title.replace(/\s+/g, ' ').trim();
-      // const cleanArtist = item.artist.replace(/\s+/g, ' ').trim();
-      const filename = `${cleanTitle}.mp3`;
-      
-      const res = await fetch(`/api/download?id=${item.id}&provider=${item.provider || 'gequbao'}&filename=${encodeURIComponent(filename)}`);
-      
-      if (!res.ok) throw new Error("Download failed");
-      
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      // Update status to downloading
+      setDownloadTasks(prev => prev.map(t => 
+        t.id === task.id ? { ...t, status: 'downloading' } : t
+      ));
+
+      const response = await axios.get(`/api/download`, {
+        params: {
+          id: task.musicItem.id,
+          provider: task.musicItem.provider || 'gequbao',
+          filename: task.fileName
+        },
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = (progressEvent.loaded / progressEvent.total) * 100;
+            setDownloadTasks(prev => prev.map(t => 
+              t.id === task.id ? { ...t, progress: percent } : t
+            ));
+          }
+        }
+      });
+
+      // Handle completion
+      const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.download = filename;
+      link.download = task.fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+
+      setDownloadTasks(prev => prev.map(t => 
+        t.id === task.id ? { ...t, status: 'completed', progress: 100 } : t
+      ));
+
+    } catch (err: any) {
       console.error(err);
+      setDownloadTasks(prev => prev.map(t => 
+        t.id === task.id ? { ...t, status: 'error', error: err.message || 'Download failed' } : t
+      ));
     }
+  };
+
+  const downloadOne = async (item: MusicItem) => {
+    const taskId = `${item.id}-${Date.now()}`;
+    const cleanTitle = item.title.replace(/\s+/g, ' ').trim();
+    const filename = `${cleanTitle}.mp3`;
+
+    // Add initial task
+    const newTask: DownloadTask = {
+      id: taskId,
+      musicItem: item,
+      status: 'pending',
+      progress: 0,
+      fileName: filename,
+      startTime: Date.now()
+    };
+
+    setDownloadTasks(prev => [newTask, ...prev]);
+    setIsDrawerOpen(true);
+    
+    // Execute immediately for single download
+    await executeDownload(newTask);
   };
 
   const toggleSelection = (id: string) => {
@@ -182,15 +232,51 @@ export default function Home() {
       if (!confirm(`即将下载 ${items.length} 首歌曲，可能需要一些时间，是否继续？`)) return;
     }
 
+    // 1. Create all tasks immediately
+    const newTasks: DownloadTask[] = items.map(item => {
+      const cleanTitle = item.title.replace(/\s+/g, ' ').trim();
+      return {
+        id: `${item.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        musicItem: item,
+        status: 'pending',
+        progress: 0,
+        fileName: `${cleanTitle}.mp3`,
+        startTime: Date.now()
+      };
+    });
+
+    // 2. Add to state
+    setDownloadTasks(prev => [...newTasks, ...prev]);
+    setIsDrawerOpen(true);
     setDownloadingCount(items.length);
 
-    // 串行下载避免并发过高
-    for (const item of items) {
-      await downloadOne(item);
-      // 增加延迟，防止浏览器拦截
-      await new Promise(r => setTimeout(r, 1000));
-      setDownloadingCount(prev => Math.max(0, prev - 1));
-    }
+    // 3. Process with concurrency limit
+    const CONCURRENCY_LIMIT = 3;
+    const queue = [...newTasks];
+    const activePromises: Promise<void>[] = [];
+
+    const processQueue = async () => {
+      while (queue.length > 0) {
+        if (activePromises.length >= CONCURRENCY_LIMIT) {
+          await Promise.race(activePromises);
+        }
+        
+        const task = queue.shift();
+        if (task) {
+          const promise = executeDownload(task).then(() => {
+            setDownloadingCount(prev => Math.max(0, prev - 1));
+            // Remove self from active promises
+            const index = activePromises.indexOf(promise);
+            if (index > -1) activePromises.splice(index, 1);
+          });
+          activePromises.push(promise);
+        }
+      }
+      // Wait for remaining
+      await Promise.all(activePromises);
+    };
+
+    await processQueue();
     setDownloadingCount(0);
   };
 
@@ -234,6 +320,10 @@ export default function Home() {
           </p>
           
           {/* Provider Selector */}
+          <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+             <Music className="w-4 h-4" />
+             <span>选择搜索来源:</span>
+          </div>
           <div className="flex justify-center mb-6 gap-3 flex-wrap">
             {[
               { id: 'gequbao', name: '歌曲宝' },
@@ -498,6 +588,42 @@ export default function Home() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Download Drawer */}
+      <DownloadDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        tasks={downloadTasks}
+        onRemoveTask={(taskId) => setDownloadTasks(prev => prev.filter(t => t.id !== taskId))}
+        onClearCompleted={() => setDownloadTasks(prev => prev.filter(t => t.status === 'downloading' || t.status === 'pending'))}
+      />
+
+      {/* Floating Download Toggle Button (Bottom Right) */}
+      <AnimatePresence>
+        {!isDrawerOpen && downloadTasks.length > 0 && (
+          <motion.button
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            onClick={() => setIsDrawerOpen(true)}
+            className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-sky-500 hover:bg-sky-600 text-white rounded-full shadow-lg shadow-sky-500/30 flex items-center justify-center transition-all active:scale-95 group"
+          >
+            <div className="relative">
+               <Download className="w-6 h-6" />
+               {downloadTasks.some(t => t.status === 'downloading') && (
+                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                 </span>
+               )}
+            </div>
+            {/* Tooltip */}
+            <span className="absolute right-full mr-4 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              查看下载任务
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Floating Batch Action Bar */}
       <AnimatePresence>

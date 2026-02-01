@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { MusicItem, MusicProvider, PlayInfo } from '@/types/music';
 
+const REQUEST_TIMEOUT = 15000;
+
 const HEADERS_PAGE = {
   'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
   'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -35,13 +37,44 @@ const HEADERS_API = {
   'x-requested-with': 'XMLHttpRequest',
 };
 
+function extractExt(url: string) {
+  const clean = url.split('?')[0];
+  const parts = clean.split('.');
+  return parts.length > 1 ? parts[parts.length - 1] : 'mp3';
+}
+
+function decodeJsStringLiteral(raw: string) {
+  return JSON.parse(`"${raw.replace(/"/g, '\\"')}"`) as string;
+}
+
+function extractAppData(html: string): Record<string, unknown> {
+  const jsonParseMatch = /window\.appData\s*=\s*JSON\.parse\((['"])([\s\S]*?)\1\)\s*;/.exec(html);
+  if (jsonParseMatch) {
+    try {
+      const jsonText = decodeJsStringLiteral(jsonParseMatch[2]);
+      return JSON.parse(jsonText) as Record<string, unknown>;
+    } catch {
+    }
+  }
+
+  const jsonObjectMatch = /window\.appData\s*=\s*(\{[\s\S]*?\})\s*;/.exec(html);
+  if (jsonObjectMatch) {
+    try {
+      return JSON.parse(jsonObjectMatch[1]) as Record<string, unknown>;
+    } catch {
+    }
+  }
+
+  return {};
+}
+
 export class GequbaoProvider implements MusicProvider {
   name = 'gequbao';
 
   async search(query: string): Promise<MusicItem[]> {
     try {
       const url = `https://www.gequbao.com/s/${encodeURIComponent(query)}`;
-      const { data } = await axios.get(url, { headers: HEADERS_PAGE, timeout: 10000 });
+      const { data } = await axios.get(url, { headers: HEADERS_PAGE, timeout: REQUEST_TIMEOUT });
       const $ = cheerio.load(data);
       const items: MusicItem[] = [];
 
@@ -144,51 +177,34 @@ export class GequbaoProvider implements MusicProvider {
     }
   }
 
-  async getPlayInfo(id: string): Promise<PlayInfo> {
+  async getPlayInfo(id: string, extra?: unknown): Promise<PlayInfo> {
+    void extra;
     try {
       const pageUrl = `https://www.gequbao.com/music/${id}`;
       const { data: html } = await axios.get(pageUrl, {
         headers: { ...HEADERS_PAGE, referer: 'https://www.gequbao.com/' },
-        timeout: 10000,
+        timeout: REQUEST_TIMEOUT,
       });
 
-      // 提取 window.appData
-      const match = html.match(/window\.appData\s*=\s*(\{[\s\S]*?\});/);
-      let playId = '';
-      let cover = '';
-      
-      if (match) {
-        try {
-          const appData = JSON.parse(match[1]);
-          playId = appData.play_id;
-          cover = appData.mp3_cover || '';
-        } catch (e) {
-          console.error('JSON parse error', e);
-        }
-      }
-
-      // 如果没匹配到或解析失败，尝试备用正则提取
-      if (!playId) {
-        // 这里可以实现更复杂的括号匹配逻辑，暂略，假设MVP场景正则足够
-      }
+      const appData = extractAppData(html);
+      const playId = typeof appData.play_id === 'string' ? appData.play_id : '';
+      const cover = typeof appData.mp3_cover === 'string' ? appData.mp3_cover : undefined;
 
       if (!playId) throw new Error('Failed to extract play_id');
 
-      // 请求API
-      const { data: apiRes } = await axios.post(
-        'https://www.gequbao.com/api/play-url',
-        `id=${encodeURIComponent(playId)}`,
-        {
-          headers: { ...HEADERS_API, referer: pageUrl },
-          timeout: 10000,
-        }
-      );
+      const params = new URLSearchParams({ id: playId });
+      const { data: apiRes } = await axios.post('https://www.gequbao.com/api/play-url', params, {
+        headers: { ...HEADERS_API, referer: pageUrl },
+        timeout: REQUEST_TIMEOUT,
+      });
 
       if (apiRes.code === 1 && apiRes.data?.url) {
+        const url = String(apiRes.data.url || '').trim();
+        if (!url.startsWith('http')) throw new Error('Invalid url');
         return {
-          url: apiRes.data.url,
-          type: 'mp3', // 默认为mp3，实际可从url后缀判断
-          cover: cover
+          url,
+          type: extractExt(url),
+          cover,
         };
       }
       
